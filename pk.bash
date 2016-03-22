@@ -48,10 +48,20 @@ function pkencrypt() {
 				-in "$input_filename" \
 				-out "$output_filename"
 		else # too big for public-key
-			output_filename="${input_filename}.aes"
-			key_filename="${input_filename}.rsa"
+			case "$input_filename" in
+				*.7z|*.bz2|*.tbz2|*.gz|*.tgz|*.lzma|*.xz|*.txz|*.zip|*.Z|*.jpg|*.jpeg|*.png)
+					output_filename="${input_filename}.aes"
+					key_filename="${input_filename}.rsa"
+					function pp() { pv "$@"; }
+					;;
+				*)
+					output_filename="${input_filename}.gz.aes"
+					key_filename="${input_filename}.gz.rsa"
+					function pp() { pv "$@" | gzip -c; }
+					;;
+			esac
 			export otpass=$(openssl rand 244)
-			gzip -c "${input_filename}" | \
+			pp "${input_filename}" | \
 			openssl enc -aes-256-cbc -salt -pass env:otpass \
 				-out "$output_filename"
 			openssl rsautl -encrypt -inkey $their_public_key -pubin \
@@ -121,8 +131,7 @@ function pkdecrypt() {
 				export otpass=$(openssl rsautl -decrypt -inkey "$my_private_key" \
 					-in "$key_filename")
 				openssl enc -d -aes-256-cbc -pass env:otpass \
-					-in "${input_filename}" | \
-				gzip -dc
+					-in "${input_filename}"
 				otpass=
 				;;
 			*)
