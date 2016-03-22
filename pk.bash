@@ -8,7 +8,7 @@ my_public_key=public.pem
 [[ -s "$my_private_key" ]] || echo Running without private key
 
 function pkgen() {
-	[[ -s "$1" ]] && private_key="$1" || private_key="$my_private_key"
+	[[ "$1" ]] && private_key="$1" || private_key="$my_private_key"
 	shift
 	[[ -s "$private_key" ]] && { echo Refusing to overwrite "$private_key"; exit -2; }
 	openssl genrsa -aes256 -out "$private_key" 2048
@@ -22,6 +22,18 @@ function pkgetpub() {
 	openssl rsa -in $private_key -out $my_public_key -outform PEM -pubout
 }
 
+function pkexportpub() {
+	[[ -s "$1" ]] && from_key="$1" || from_key="$my_public_key"
+	[[ "$2" ]] && to_key="$2" || to_key="${from_key%.*}.txt"
+	openssl rsa -pubin -in "$from_key" -RSAPublicKey_out -out "$to_key"
+}
+
+function pkimportpub() {
+	from_key="$1"
+	[[ "$2" ]] && to_key="$2" || to_key="${from_key%.*}.pem"
+	openssl rsa -RSAPublicKey_in -in "$from_key" -pubout -out "$to_key"
+}
+
 function pkencrypt() {
 	their_public_key="$1"
 	shift
@@ -30,7 +42,7 @@ function pkencrypt() {
 		# 244-245 bytes seems to be the largest size of an RSA encrypt
 		size=$(stat -c%s "$input_filename")
 		if [[ $size -le 244 ]]
-		then # small enough to ecrypt with public-key
+		then # small enough to encrypt with public-key
 			output_filename="${input_filename}.rsa"
 			openssl rsautl -encrypt -inkey $their_public_key -pubin \
 				-in "$input_filename" \
@@ -78,7 +90,15 @@ function pkverify() {
 	shift
 	for input_filename
 	do
-		sig_filename="${input_filename}.sig"
+		case "${input_filename}" in
+			*.sig)
+				sig_filename="${input_filename}"
+				input_filename="${input_filename%.sig}"
+				;;
+			*)
+				sig_filename="${input_filename}.sig"
+				;;
+		esac
 		echo "${input_filename}":
 		openssl dgst -sha256 -verify $their_public_key \
 			-signature "$sig_filename" \
@@ -124,15 +144,35 @@ case "$1" in
 		pkdecrypt "$@"
 		;;
 	enc|encrypt) shift
-		pkencrypt "$@"
+		their_public_key="$1"
+		shift
+		pkencrypt "$their_public_key" "$@"
+		[[ -s "$my_private_key" ]] || break
+		for input_filename
+		do
+			if [[ -s "${input_filename}.aes" ]]
+			then
+				pksign "${input_filename}.aes"
+			elif [[ -s "${input_filename}.rsa" ]]
+			then
+				pksign "${input_filename}.rsa"
+			fi
+		done
+		;;
+	export) shift
+		[[ "$my_private_key" -nt "$my_public_key" ]] && pkgetpub
+		pkexportpub "$@"
 		;;
 	gen|generate) shift
-		pkgen
-		[[ -s "$my_public_key" ]] && pkgetpub
+		pkgen "$@"
+		[[ "$my_private_key" -nt "$my_public_key" ]] && pkgetpub
+		;;
+	import) shift
+		pkimportpub "$@"
 		;;
 	sig|sign) shift
 		pksign "$@"
-		[[ -s "$my_public_key" ]] && pkgetpub
+		[[ "$my_private_key" -nt "$my_public_key" ]] && pkgetpub
 		;;
 	v|verify) shift
 		pkverify "$@"
@@ -148,7 +188,7 @@ case "$1" in
 		;;
 	mksum) shift
 		pkmksum "$@"
-		[[ -s "$my_public_key" ]] && pkgetpub
+		[[ "$my_private_key" -nt "$my_public_key" ]] && pkgetpub
 		;;
 	chksum) shift
 		pkchksum "$@"
