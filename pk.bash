@@ -2,6 +2,7 @@
 ### common functions wrapping openssl public key operations
 set -e
 
+
 function pkgetsharedsecret() {
 	their_public_key="$1"
 	shift

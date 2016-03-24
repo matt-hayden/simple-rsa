@@ -8,9 +8,15 @@ my_public_key=public.pem
 #[[ -s "$my_private_key" ]] || my_private_key=$HOME/"$my_private_key"
 [[ -s "$my_private_key" ]] || echo Running without private key
 
+
 function pkgen() {
-	[[ "$1" ]] && private_key="$1" || private_key="$my_private_key"
-	shift
+	if [[ "$1" ]]
+	then
+		private_key="$1"
+		shift
+	else
+		private_key="$my_private_key"
+	fi
 	[[ -s "$private_key" ]] && { echo Refusing to overwrite "$private_key"; exit -2; }
 	openssl genrsa -aes256 -out "$private_key" 2048
 }
@@ -66,14 +72,16 @@ function pkencrypt() {
 			if [[ -s "$my_private_key" ]]
 			then
 				export shared_secret=$(pkgetsharedsecret "$their_public_key")
+				[[ "$my_private_key" -nt "$my_public_key" ]] && pkgetpub
+				# remember to distribute your public key with the payload file
 			else
 				export shared_secret=$(openssl rand 244)
+				openssl rsautl -encrypt -inkey "$their_public_key" -pubin \
+					-out "$key_filename" <<< "$shared_secret"
 			fi
 			pp "${input_filename}" | \
 			openssl enc -aes256 -salt -pass env:shared_secret \
 				-out "$output_filename"
-			openssl rsautl -encrypt -inkey "$their_public_key" -pubin \
-				-out "$key_filename" <<< "$shared_secret"
 			shared_secret=
 		fi
 	done
@@ -149,6 +157,7 @@ function pkdecrypt() {
 		esac
 	done
 }
+
 
 case "$1" in
 	d|decrypt) shift
