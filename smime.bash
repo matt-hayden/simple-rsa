@@ -13,12 +13,22 @@ function smime_gen() {
 	[[ -s "$private_key" ]] && { echo Refusing to overwrite "$private_key"; exit -2; }
 	openssl req -newkey rsa:2048 -nodes -sha256 -days 365 \
 		-keyout "$my_private_key" \
-		-out tmp.pem
-	echo Signing certificate:
-	openssl x509 -req -signkey "$my_private_key" \
-		-in tmp.pem \
-		-out "$my_public_key" \
-	&& rm tmp.pem
+		-out "$my_public_key" -x509
+	#echo Signing certificate:
+	#openssl x509 -req -signkey "$my_private_key" \
+		#-in tmp.pem \
+		#-out "$my_public_key" \
+	#&& rm tmp.pem
+}
+
+function smime_getpub() {
+	[[ -s "$1" ]] && private_key="$1" || private_key="$my_private_key"
+	[[ -s "$private_key" ]] || { echo Cannot find "$private_key"; exit -2; }
+	[[ -s "$my_public_key" ]] && mv -f "$my_public_key" "$my_public_key"~
+	echo Generating new public key in "$my_public_key"
+	openssl rsa -pubout \
+		-in "$private_key" \
+		-out "$my_public_key" -pubout
 }
 
 function smime_sign() {

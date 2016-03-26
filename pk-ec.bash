@@ -2,7 +2,7 @@
 set -e
 source pk.bash
 
-curve_name=brainpoolP512r1 # See others with openssl ecparam -list_curves
+curve_name=brainpoolP256t1 # See others with openssl ecparam -list_curves
 curve="${curve_name}.curve"
 if [[ -s "$curve" ]]
 then
@@ -12,7 +12,7 @@ else
 		-out "$curve" \
 	&& echo "$curve" can be used with previous versions
 fi
-my_private_key=.${curve_name}_private.key
+my_private_key=.secret_${curve_name}.key
 my_public_key=public.pem
 
 #[[ -s "$my_private_key" ]] || my_private_key=$HOME/"$my_private_key"
@@ -20,34 +20,26 @@ my_public_key=public.pem
 
 
 function pkgen() {
-	if [[ "$1" ]]
-	then
-		private_key="$1"
-		shift
-	else
-		private_key="$my_private_key"
-	fi
-	[[ -s "$private_key" ]] && { echo Refusing to overwrite "$private_key"; exit -2; }
-	# two steps needed to add passphrase, DER format defeats this
-	openssl ecparam -genkey -in "$curve" \
-	| openssl ec -aes256 -out "$private_key"
+	secret_key="$1"
+	[[ -s "$secret_key" ]] && { echo Refusing to overwrite "$secret_key"; exit -1; }
+	[[ "$2" ]] && cert="$2" || cert="${secret_key%.*}.cert"
+	openssl req -sha256 -nodes -newkey ec:"$curve" \
+		-keyout "${secret_key}" \
+		-out "${cert}"
+	[[ -s "$secret_key" ]] || { echo Failed to create "$secret_key"; exit -1; }
 }
 
-function pkgetpub() {
-	[[ -s "$1" ]] && private_key="$1" || private_key="$my_private_key"
-	[[ -s "$private_key" ]] || { echo Cannot find "$private_key"; exit -2; }
-	[[ -s "$my_public_key" ]] && mv -f "$my_public_key" "$my_public_key"~
-	echo Generating new public key in "$my_public_key"
-	openssl ec -pubout \
-		-in "$private_key" \
-		-out "$my_public_key"
-}
+#function pkpasswd() {
+#	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key"; exit -2; }
+#	openssl ec -in "$my_private_key" \
+#	| openssl ec -aes256 -out "$private_key"
+#	shred "$my_private_key" && mv tmp.key "$my_private_key" || echo Error prevented changing password of "$my_private_key"
+#}
 
 
 case "$1" in
 	gen|generate) shift
-		pkgen "$@"
-		[[ "$my_private_key" -nt "$my_public_key" ]] && pkgetpub
+		gen "$@"
 		;;
 	info) shift
 		if [[ -e "$my_private_key" ]]
@@ -73,14 +65,12 @@ case "$1" in
 	#
 	sig|sign) shift
 		pksign "$@"
-		[[ "$my_private_key" -nt "$my_public_key" ]] && pkgetpub
 		;;
 	v|verify) shift
 		pkverify "$@"
 		;;
 	mksum) shift
 		pkmksum "$@"
-		[[ "$my_private_key" -nt "$my_public_key" ]] && pkgetpub
 		;;
 	chksum) shift
 		pkchksum "$@"
