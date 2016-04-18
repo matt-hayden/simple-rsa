@@ -106,7 +106,15 @@ function encrypt() {
 	for input_filename
 	do
 		case "$input_filename" in
-			*.7z|*.bz2|*.tbz2|*.gz|*.tgz|*.lzma|*.xz|*.txz|*.zip|*.Z|*.jpg|*.jpeg|*.png)
+			*.7z|*.bz2|*.tbz2|*.gz|*.tgz|*.lzma|*.xz|*.txz|*.tlz|*.zip|*.Z)
+				output_filename="${input_filename}.aes"
+				function CAT() { pv "$@"; }
+				;;
+			*.jpg|*.jpeg|*.png)
+				output_filename="${input_filename}.aes"
+				function CAT() { pv "$@"; }
+				;;
+			*.bfe|*.gpg|*.pgp)
 				output_filename="${input_filename}.aes"
 				function CAT() { pv "$@"; }
 				;;
