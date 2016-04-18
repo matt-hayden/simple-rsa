@@ -5,7 +5,6 @@ source pk.bash
 my_private_key=.secret_rsa.key
 my_public_key=public.pem
 
-#[[ -s "$my_private_key" ]] || my_private_key=$HOME/"$my_private_key"
 [[ -s "$my_private_key" ]] || echo Running without private key
 
 
@@ -19,20 +18,10 @@ function pkgen() {
 	[[ -s "$secret_key" ]] || { echo Failed to create "$secret_key"; exit -1; }
 }
 
-#function pkgetpub() {
-#	[[ -s "$1" ]] && private_key="$1" || private_key="$my_private_key"
-#	[[ -s "$private_key" ]] || { echo Cannot find "$private_key"; exit -1; }
-#	[[ -s "$my_public_key" ]] && mv -f "$my_public_key" "$my_public_key"~
-#	echo Generating new public key in "$my_public_key"
-#	openssl rsa -pubout \
-#		-in "$private_key" \
-#		-out "$my_public_key"
-#}
-
 function pkexportpub() {
 	[[ -s "$1" ]] && from_key="$1" || from_key="$my_public_key"
 	[[ "$2" ]] && to_key="$2" || to_key="${from_key%.*}.txt"
-	openssl rsa -pubin -in "$from_key" -RSAPublicKey_out -out "$to_key"
+	openssl rsa -pubin -in "$from_key" -RSAPublicKey_out
 }
 
 function pkimportpub() {
@@ -40,36 +29,6 @@ function pkimportpub() {
 	[[ "$2" ]] && to_key="$2" || to_key="${from_key%.*}.pem"
 	openssl rsa -RSAPublicKey_in -in "$from_key" -pubout -out "$to_key"
 }
-
-#function anonymous_encrypt() {
-#	# 244-245 bytes seems to be the largest size of an RSA encrypt
-#	their_public_key="$1"
-#	shift
-#	for input_filename
-#	do
-#		output_filename="${input_filename}.rsa"
-#		openssl rsautl -encrypt -inkey "$their_public_key" -pubin \
-#			-in "$input_filename" \
-#			-out "$output_filename"
-#	done
-#}
-#
-#function pkdecrypt() {
-#	# required for (upper) encrypt
-#	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key"; exit -1; }
-#	for input_filename
-#	do
-#		openssl rsautl -decrypt \
-#			-inkey "$my_private_key" \
-#			-in "$input_filename"
-#	done
-#}
-
-#function pkpasswd() {
-#	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key"; exit -1; }
-#	openssl rsa -in "$my_private_key" -aes256 -out tmp.key
-#	shred "$my_private_key" && mv tmp.key "$my_private_key" || echo Error prevented changing password of "$my_private_key"
-#}
 
 
 case "$1" in
@@ -117,6 +76,9 @@ case "$1" in
 		;;
 	chksum) shift
 		pkchksum "$@"
+		;;
+	qr) shift
+		getQR "$@"
 		;;
 	*)
 		echo "Invalid command: $@"

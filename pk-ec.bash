@@ -2,6 +2,8 @@
 set -e
 source pk.bash
 
+# OpenSSL elliptic curves can only sign, cannot encrypt
+
 curve_name=brainpoolP256t1 # See others with openssl ecparam -list_curves
 curve="${curve_name}.curve"
 if [[ -s "$curve" ]]
@@ -15,7 +17,6 @@ fi
 my_private_key=.secret_${curve_name}.key
 my_public_key=public.pem
 
-#[[ -s "$my_private_key" ]] || my_private_key=$HOME/"$my_private_key"
 [[ -s "$my_private_key" ]] || echo Running without private key
 
 
@@ -29,12 +30,17 @@ function pkgen() {
 	[[ -s "$secret_key" ]] || { echo Failed to create "$secret_key"; exit -1; }
 }
 
-#function pkpasswd() {
-#	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key"; exit -2; }
-#	openssl ec -in "$my_private_key" \
-#	| openssl ec -aes256 -out "$private_key"
-#	shred "$my_private_key" && mv tmp.key "$my_private_key" || echo Error prevented changing password of "$my_private_key"
-#}
+function pkexportpub() {
+	[[ -s "$1" ]] && from_key="$1" || from_key="$my_public_key"
+	[[ "$2" ]] && to_key="$2" || to_key="${from_key%.*}.txt"
+	openssl ec -pubin -in "$from_key"
+}
+
+function pkimportpub() {
+	from_key="$1"
+	[[ "$2" ]] && to_key="$2" || to_key="${from_key%.*}.pem"
+	openssl ec -in "$from_key" -pubout -out "$to_key"
+}
 
 
 case "$1" in

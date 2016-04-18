@@ -1,7 +1,33 @@
 #! /usr/bin/env head
 ### common functions wrapping openssl public key operations
+
+# Source this file into your script, having implemented pkgen for specific keys.
+
 set -e
 
+
+if command -v shred &> /dev/null
+then
+	function SHRED() { shred "$@"; rm -f "$@"; }
+else
+	function SHRED() { rm -f "$@"; }
+fi
+
+if command -v trash &> /dev/null
+then
+	function TRASH() { trash "$@"; }
+else
+	function TRASH() { rm -i "$@"; }
+fi
+
+if command -v qrencode &> /dev/null
+then
+	function QR() {
+		qrencode -c -lH "$@" || echo "No QR code produced" >&2 ;
+	}
+else
+	function QR() { true; }
+fi
 
 function gen() {
 	# make sure to implement pkgen
@@ -10,16 +36,16 @@ function gen() {
 	cert="${private_key%.*}.cert"
 	public_key="${private_key%.*}.pub"
 	secret="${private_key%.*}.secret"
-	pkgen "${secret}" "$cert" || { echo Failed to generate private key "${secret}"; exit -2; }
+	pkgen "${secret}" "$cert"
 	if openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 \
 		-in "${secret}" \
 		-out "$private_key"
 	then
-		shred "${secret}"
-		rm -f "${secret}"
+		SHRED "${secret}"
 		echo Private key saved to "$private_key"
 	else
-		echo Failed to convert "${secret}" to PKCS8
+		echo Failed to convert "${secret}" to PKCS8 >&2
+		exit -1
 	fi
 	if openssl req -pubkey \
 		-in "$cert" \
@@ -28,6 +54,7 @@ function gen() {
 		rm -f "$cert"
 		echo Public key saved to "$public_key"
 	fi
+	image_file="${public_key}.png"
 }
 
 function pkpasswd() {
@@ -43,22 +70,30 @@ function pkpasswd() {
 		-out "$private_key"
 }
 
+function getQR() {
+	# make sure to implement pkexportpub
+	[[ -s "$1" ]] && from_key="$1" || from_key="$my_public_key"
+	[[ "$2" ]] && img="$2" || img="${from_key%.*}.png"
+	pkexportpub "$1" | QR -o "$img"
+}
+
+### shared secret derivation is not globally supported by OpenSSL
 #function pkgetsharedsecret() {
 #	# a binary shared secret is returned on stdout
 #	their_public_key="$1"
 #	shift
-#	[[ -s "$their_public_key" ]] || { echo "$their_public_key" not found; exit -2; }
+#	[[ -s "$their_public_key" ]] || { echo "$their_public_key" not found; exit -3; }
 #	openssl pkeyutl -derive -inkey "$my_private_key" -peerkey "$their_public_key"
 #}
 
 function pksign() {
 	# a binary signature is returned on stdout
-	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key"; exit -2; }
+	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key"; exit -4; }
 	openssl dgst -sha256 -sign "$my_private_key" "$@"
 }
 
 function pkmksum() {
-	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key"; exit -2; }
+	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key"; exit -5; }
 	sha256sum -b "$@" > SHA256SUM
 	pksign SHA256SUM > SHA256SUM.sig
 }
@@ -91,18 +126,27 @@ function pkverify() {
 }
 
 function encrypt() {
+	# echos back filenames for, say, zip -@
 	their_public_key="$1"
 	shift
 
+	# use a random string as a session key.
 	export secret=$(openssl rand 244)
-	openssl pkeyutl -encrypt \
+	if openssl pkeyutl -encrypt \
 		-pubin -inkey "$their_public_key" \
 		-out aes.key \
 		<<< "$secret"
-	pkmksum aes.key "$@"
-	echo aes.key
-	echo SHA256SUM
-	echo SHA256SUM.sig 
+	then
+		echo aes.key
+	else
+		echo "Key generation failed" >&2
+		exit -6
+	fi
+	base64 aes.key | QR -o session.png
+	if pkmksum aes.key "$@"
+	then
+		echo SHA256SUM{,.sig}
+	fi
 	for input_filename
 	do
 		case "$input_filename" in
@@ -123,10 +167,18 @@ function encrypt() {
 				function CAT() { pv "$@" | gzip -c ; }
 				;;
 		esac
-		CAT "$input_filename" \
+		if CAT "$input_filename" \
 		| openssl enc -aes256 -salt -pass env:secret \
 			-out "$output_filename"
-		[[ -s "$output_filename" ]] && echo "$output_filename"
+		then
+			if [[ -s "$output_filename" ]]
+			then
+				echo "$output_filename"
+			else
+				echo "Encryption failed on $input_filename" >&2
+				exit -7
+			fi
+		fi
 	done
 	export secret=
 }
@@ -146,12 +198,29 @@ function decrypt() {
 		case "$input_filename" in
 			*.aes)
 				output_filename="${input_filename%.aes}"
-				openssl enc -d -aes256 -pass env:secret \
+				if openssl enc -d -aes256 -pass env:secret \
 					-in "${input_filename}" \
 					-out "$output_filename"
+				then
+					TRASH "${input_filename}"
+				else
+					echo "Encryption failed on $input_filename" >&2
+					exit -8
+				fi
 				;;
 		esac
 	done
+	for input_filename
+	do
+		case "$input_filename" in
+			*.aes|*.key)
+				;;
+			*)
+				echo "$input_filename" ignored
+				;;
+		esac
+	done
+		
 	# TODO: verify sums
 	secret=
 }
