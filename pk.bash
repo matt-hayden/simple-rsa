@@ -4,30 +4,8 @@
 # Source this file into your script, having implemented pkgen for specific keys.
 
 set -e
+source file.bash
 
-
-if command -v shred &> /dev/null
-then
-	function SHRED() { shred "$@"; rm -f "$@"; }
-else
-	function SHRED() { rm -f "$@"; }
-fi
-
-if command -v trash &> /dev/null
-then
-	function TRASH() { trash "$@"; }
-else
-	function TRASH() { rm -i "$@"; }
-fi
-
-if command -v qrencode &> /dev/null
-then
-	function QR() {
-		qrencode -c -lH "$@" || echo "No QR code produced" >&2 ;
-	}
-else
-	function QR() { true; }
-fi
 
 function gen() {
 	# make sure to implement pkgen
@@ -72,9 +50,9 @@ function pkpasswd() {
 
 function getQR() {
 	# make sure to implement pkexportpub
-	[[ -s "$1" ]] && from_key="$1" || from_key="$my_public_key"
-	[[ "$2" ]] && img="$2" || img="${from_key%.*}.png"
-	pkexportpub "$1" | QR -o "$img"
+	[[ -s "$1" ]] && key_file="$1" || key_file="$my_public_key"
+	[[ "$2" ]] && img="$2" || img="${key_file%.*}.png"
+	pkexportpub "$key_file" | QR -o "$img"
 }
 
 ### shared secret derivation is not globally supported by OpenSSL
@@ -111,50 +89,56 @@ function pkverify() {
 	do
 		case "${input_filename}" in
 			*.sig)
-				sig_filename="${input_filename}"
+				sig_file="${input_filename}"
 				input_filename="${input_filename%.sig}"
 				;;
 			*)
-				sig_filename="${input_filename}.sig"
+				sig_file="${input_filename}.sig"
 				;;
 		esac
 		echo "${input_filename}":
 		openssl dgst -sha256 -verify "$their_public_key" \
-			-signature "$sig_filename" \
+			-signature "$sig_file" \
 			"$input_filename"
 	done
 }
 
 function encrypt() {
 	# echos back filenames for, say, zip -@
+	key_file="aes.key"
 	their_public_key="$1"
 	shift
 
-	# use a random string as a session key.
+	# use a random string as a session password
 	export secret=$(openssl rand 244)
 	if openssl pkeyutl -encrypt \
 		-pubin -inkey "$their_public_key" \
-		-out aes.key \
+		-out "$key_file" \
 		<<< "$secret"
 	then
-		echo aes.key
-	else
-		echo "Key generation failed" >&2
-		exit -6
+		echo "$key_file"
 	fi
-	base64 aes.key | QR -o session.png
-	if pkmksum aes.key "$@"
+	base64 "$key_file" | QR -o session.png
+	if [[ $# -eq 1 ]]
 	then
+		sig_file="${1}.sig"
+		pksign "$1" > "$sig_file"
+		echo "$sig_file"
+	else
+		pkmksum "$key_file" "$@"
 		echo SHA256SUM{,.sig}
 	fi
 	for input_filename
 	do
 		case "$input_filename" in
+			*.aes)
+				echo "Skipping $input_filename"
+				;;
 			*.7z|*.bz2|*.tbz2|*.gz|*.tgz|*.lzma|*.xz|*.txz|*.tlz|*.zip|*.Z)
 				output_filename="${input_filename}.aes"
 				function CAT() { pv "$@"; }
 				;;
-			*.jpg|*.jpeg|*.png)
+			*.jpg|*.jpeg|*.png|*.xlsx|*.docx)
 				output_filename="${input_filename}.aes"
 				function CAT() { pv "$@"; }
 				;;
@@ -174,9 +158,6 @@ function encrypt() {
 			if [[ -s "$output_filename" ]]
 			then
 				echo "$output_filename"
-			else
-				echo "Encryption failed on $input_filename" >&2
-				exit -7
 			fi
 		fi
 	done
@@ -193,6 +174,7 @@ function decrypt() {
 				;;
 		esac
 	done
+	[[ "$secret" ]] || { echo "Obtaining key failed"; exit -8; }
 	for input_filename
 	do
 		case "$input_filename" in
@@ -222,6 +204,6 @@ function decrypt() {
 	done
 		
 	# TODO: verify sums
-	secret=
+	export secret=
 }
 
