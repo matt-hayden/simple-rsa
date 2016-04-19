@@ -106,8 +106,6 @@ function decrypt() {
 				;;
 		esac
 	done
-		
-	# TODO: verify sums
 	export secret=
 }
 

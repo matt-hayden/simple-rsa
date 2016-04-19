@@ -66,14 +66,21 @@ function getQR() {
 
 function pksign() {
 	# a binary signature is returned on stdout
+	# OpenSSL doesn't seem to sign and verify multiple files correctly, so we instead sign a digest
 	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key"; exit -4; }
-	openssl dgst -sha256 -sign "$my_private_key" "$@"
+	if [[ $# -eq 1 ]]
+	then
+		sig_file="${1}.sig"
+		openssl dgst -sha256 -sign "$my_private_key" "${1}" > "$sig_file"
+	else
+		pkmksum "$@"
+	fi
 }
 
 function pkmksum() {
 	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key"; exit -5; }
 	sha256sum -b "$@" > SHA256SUM
-	pksign SHA256SUM > SHA256SUM.sig
+	pksign SHA256SUM
 }
 
 function pkchksum() {
@@ -117,11 +124,7 @@ function encrypt() {
 		<<< "$secret"
 	echo "$key_file"
 	base64 "$key_file" | QR -o session.png
-	if [[ $# -eq 1 ]]
-	then
-		sig_file="${1}.sig"
-		pksign "$1" > "$sig_file"
-		echo "$sig_file"
+	if [[ $# -gt 1 ]]
 	else
 		pkmksum "$key_file" "$@"
 		echo SHA256SUM{,.sig}
@@ -154,6 +157,12 @@ function encrypt() {
 			-out "$output_filename"
 		echo "$output_filename"
 	done
+	if [[ $# -eq 1 ]]
+	then
+		sig_file="${output_filename}.sig"
+		pksign "$output_filename" > "$sig_file"
+		echo "$sig_file"
+	fi
 	export secret=
 }
 
@@ -196,8 +205,6 @@ function decrypt() {
 				;;
 		esac
 	done
-		
-	# TODO: verify sums
 	export secret=
 }
 
