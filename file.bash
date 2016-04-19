@@ -46,7 +46,7 @@ function encrypt() {
 				output_filename="${input_filename}.aes"
 				function CAT() { pv "$@"; }
 				;;
-			*.jpg|*.jpeg|*.png)
+			*.jpg|*.jpeg|*.png|*.xlsx|*.docx)
 				output_filename="${input_filename}.aes"
 				function CAT() { pv "$@"; }
 				;;
@@ -59,15 +59,10 @@ function encrypt() {
 				function CAT() { pv "$@" | gzip -c ; }
 				;;
 		esac
-		if CAT "$input_filename" \
+		CAT "$input_filename" \
 		| openssl enc -aes256 -salt -pass env:secret \
 			-out "$output_filename"
-		then
-			if [[ -s "$output_filename" ]]
-			then
-				echo "$output_filename"
-			fi
-		fi
+		echo "$output_filename"
 	done
 	export secret=
 }
@@ -95,6 +90,8 @@ function decrypt() {
 					-out "$output_filename"
 				then
 					[[ -s "$output_filename" ]] && TRASH "${input_filename}"
+				else
+					echo "Decryption failed on $input_filename" >&2
 				fi
 				;;
 		esac
@@ -105,7 +102,7 @@ function decrypt() {
 			*.aes|*.key)
 				;;
 			*)
-				echo "$input_filename" ignored
+				echo "$input_filename" ignored >&2
 				;;
 		esac
 	done

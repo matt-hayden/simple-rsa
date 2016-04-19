@@ -111,13 +111,11 @@ function encrypt() {
 
 	# use a random string as a session password
 	export secret=$(openssl rand 244)
-	if openssl pkeyutl -encrypt \
+	openssl pkeyutl -encrypt \
 		-pubin -inkey "$their_public_key" \
 		-out "$key_file" \
 		<<< "$secret"
-	then
-		echo "$key_file"
-	fi
+	echo "$key_file"
 	base64 "$key_file" | QR -o session.png
 	if [[ $# -eq 1 ]]
 	then
@@ -151,15 +149,10 @@ function encrypt() {
 				function CAT() { pv "$@" | gzip -c ; }
 				;;
 		esac
-		if CAT "$input_filename" \
+		CAT "$input_filename" \
 		| openssl enc -aes256 -salt -pass env:secret \
 			-out "$output_filename"
-		then
-			if [[ -s "$output_filename" ]]
-			then
-				echo "$output_filename"
-			fi
-		fi
+		echo "$output_filename"
 	done
 	export secret=
 }
@@ -170,6 +163,8 @@ function decrypt() {
 	do
 		case "$input_filename" in
 			*.key)
+				key_file="$input_filename"
+				echo "Using $key_file" >&2
 				export secret=$(openssl pkeyutl -decrypt -in "$input_filename" -inkey "$my_private_key")
 				;;
 		esac
@@ -184,10 +179,9 @@ function decrypt() {
 					-in "${input_filename}" \
 					-out "$output_filename"
 				then
-					TRASH "${input_filename}"
+					[[ -s "$output_filename" ]] && TRASH "${input_filename}"
 				else
-					echo "Encryption failed on $input_filename" >&2
-					exit -8
+					echo "Decryption failed on $input_filename" >&2
 				fi
 				;;
 		esac
@@ -198,7 +192,7 @@ function decrypt() {
 			*.aes|*.key)
 				;;
 			*)
-				echo "$input_filename" ignored
+				echo "$input_filename" ignored >&2
 				;;
 		esac
 	done
