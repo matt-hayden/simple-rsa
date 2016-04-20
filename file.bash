@@ -27,21 +27,53 @@ else
 	function QR() { true; }
 fi
 
-function encrypt() {
-	key_file="aes.key"
-	if [[ -s "$key_file" ]]
+function _encrypt_in() {
+	[[ "$secret" ]] || { echo "Obtaining key failed" >&2 ; exit -9; }
+	if [[ $1 ]]
 	then
-		echo "Using $key_file" >&2
-		secret=$(openssl enc -d -aes256 -in "$key_file")
+		output_filename="${1%.aes}.aes"
 	else
-		# use a random string as a session key.
-		export secret=$(openssl rand 244)
-		openssl enc -aes256 -salt -out $key_file <<< "$secret"
+		output_filename="out.xz.aes"
 	fi
+	if [[ -s "$output_filename" ]]
+	then
+		echo "Refusing to overwrite $output_filename" >&2
+		exit -1
+	fi
+	case "$output_filename" in
+		*.gz.*)
+			gzip
+			;;
+		*.xz.*)
+			xz -C sha256
+			;;
+		*)
+			pv
+			;;
+	esac | openssl enc -aes256 -salt -pass env:secret \
+		-out "$output_filename"
+	if [[ -s "$output_filename" ]]
+	then
+		echo "$output_filename"
+	else
+		echo Encryption failed >&2
+		exit -1
+	fi
+}
+
+function _encrypt_files() {
 	[[ "$secret" ]] || { echo "Obtaining key failed"; exit -9; }
 	for input_filename
 	do
 		case "$input_filename" in
+			*.sig)
+				echo "Skipping $input_filename" >&2
+				continue
+				;;
+			-)
+				_encrypt_in
+				continue
+				;;
 			*.7z|*.bz2|*.tbz2|*.gz|*.tgz|*.lzma|*.xz|*.txz|*.tlz|*.zip|*.Z)
 				output_filename="${input_filename}.aes"
 				function CAT() { pv "$@"; }
@@ -55,18 +87,94 @@ function encrypt() {
 				function CAT() { pv "$@"; }
 				;;
 			*)
-				output_filename="${input_filename}.gz.aes"
-				function CAT() { pv "$@" | gzip -c ; }
+				output_filename="${input_filename}.xz.aes"
+				function CAT() { pv "$@" | xz -C sha256 -c ; }
 				;;
 		esac
-		CAT "$input_filename" \
-		| openssl enc -aes256 -salt -pass env:secret \
+		CAT "$input_filename" | openssl enc -aes256 -salt -pass env:secret \
 			-out "$output_filename"
+		if [[ -s "$output_filename" ]]
+		then
+			TRASH "$input_filename"
+			echo "$output_filename"
+		else
+			echo Encryption failed on "$input_filename" >&2
+			exit -1
+		fi
 		echo "$output_filename"
 	done
+}
+
+function encrypt() {
+	key_file="aes.key"
+	echo "Using $key_file" >&2
+	if [[ -s "$key_file" ]]
+	then
+		secret=$(openssl enc -d -aes256 -in "$key_file")
+	else
+		# use a random string as a session key.
+		secret=$(openssl rand 244)
+		openssl enc -aes256 -salt -out $key_file <<< "$secret"
+	fi
+	echo "$key_file"
+	export secret
+	_encrypt_files "$@"
 	export secret=
 }
 
+function _decrypt_out() {
+	[[ "$secret" ]] || { echo "Obtaining key failed"; exit -9; }
+	for input_filename
+	do
+		openssl enc -d -aes256 -pass env:secret \
+			-in "${input_filename}" \
+		| case "$input_filename" in
+			*.gz.*)
+				gzip -cd
+				;;
+			*.xz.*)
+				xz -cd
+				;;
+			*)
+				cat -n
+				;;
+		esac
+	done
+}
+
+function _decrypt_files() {
+	[[ "$secret" ]] || { echo "Obtaining key failed"; exit -9; }
+	for input_filename
+	do
+		case "$input_filename" in
+			*.aes)
+				output_filename="${input_filename%.aes}"
+				openssl enc -d -aes256 -pass env:secret \
+					-in "${input_filename}" \
+					-out "$output_filename"
+				if [[ -s "$output_filename" ]]
+				then
+					TRASH "${input_filename}"
+					echo "$output_filename"
+				else
+					echo "Decryption failed on $input_filename" >&2
+					exit -1
+				fi
+				;;
+		esac
+	done
+	for input_filename
+	do
+		case "$input_filename" in
+			*.aes|*.key)
+				continue
+				;;
+			*)
+				echo "$input_filename" ignored >&2
+				;;
+		esac
+	done
+}
 
 function decrypt() {
 	for input_filename
@@ -79,33 +187,7 @@ function decrypt() {
 				;;
 		esac
 	done
-	[[ "$secret" ]] || { echo "Obtaining key failed"; exit -9; }
-	for input_filename
-	do
-		case "$input_filename" in
-			*.aes)
-				output_filename="${input_filename%.aes}"
-				if openssl enc -d -aes256 -pass env:secret \
-					-in "${input_filename}" \
-					-out "$output_filename"
-				then
-					[[ -s "$output_filename" ]] && TRASH "${input_filename}"
-				else
-					echo "Decryption failed on $input_filename" >&2
-				fi
-				;;
-		esac
-	done
-	for input_filename
-	do
-		case "$input_filename" in
-			*.aes|*.key)
-				;;
-			*)
-				echo "$input_filename" ignored >&2
-				;;
-		esac
-	done
+	_decrypt_files "$@"
 	export secret=
 }
 

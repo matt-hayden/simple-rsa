@@ -127,41 +127,26 @@ function encrypt() {
 	if [[ $# -gt 1 ]]
 	else
 		pkmksum "$key_file" "$@"
-		echo SHA256SUM{,.sig}
+		echo SHA256SUM.sig
 	fi
-	for input_filename
-	do
-		case "$input_filename" in
-			*.aes)
-				echo "Skipping $input_filename"
-				;;
-			*.7z|*.bz2|*.tbz2|*.gz|*.tgz|*.lzma|*.xz|*.txz|*.tlz|*.zip|*.Z)
-				output_filename="${input_filename}.aes"
-				function CAT() { pv "$@"; }
-				;;
-			*.jpg|*.jpeg|*.png|*.xlsx|*.docx)
-				output_filename="${input_filename}.aes"
-				function CAT() { pv "$@"; }
-				;;
-			*.bfe|*.gpg|*.pgp)
-				output_filename="${input_filename}.aes"
-				function CAT() { pv "$@"; }
-				;;
-			*)
-				output_filename="${input_filename}.gz.aes"
-				function CAT() { pv "$@" | gzip -c ; }
-				;;
-		esac
-		CAT "$input_filename" \
-		| openssl enc -aes256 -salt -pass env:secret \
-			-out "$output_filename"
-		echo "$output_filename"
-	done
+	_encypt_files SHA256SUM "$@"
+
 	if [[ $# -eq 1 ]]
 	then
+		output_filename=$(_encrypt_files "$1")
 		sig_file="${output_filename}.sig"
 		pksign "$output_filename" > "$sig_file"
-		echo "$sig_file"
+		echo "$output_filename" "$sig_file"
+	elif [[ $# -gt 1 ]]
+	then
+		output_filenames=$(_encrypt_files "$@")
+		sha256sum "$output_filenames" > SHA256SUM
+		_encrypt_files SHA256SUM
+		pksign SHA256SUM.aes > SHA256SUM.aes.sig
+		echo SHA256SUM.aes SHA256SUM.aes.sig
+	else
+		echo "Bad arguments" >&2
+		exit -1
 	fi
 	export secret=
 }
@@ -178,33 +163,7 @@ function decrypt() {
 				;;
 		esac
 	done
-	[[ "$secret" ]] || { echo "Obtaining key failed"; exit -8; }
-	for input_filename
-	do
-		case "$input_filename" in
-			*.aes)
-				output_filename="${input_filename%.aes}"
-				if openssl enc -d -aes256 -pass env:secret \
-					-in "${input_filename}" \
-					-out "$output_filename"
-				then
-					[[ -s "$output_filename" ]] && TRASH "${input_filename}"
-				else
-					echo "Decryption failed on $input_filename" >&2
-				fi
-				;;
-		esac
-	done
-	for input_filename
-	do
-		case "$input_filename" in
-			*.aes|*.key)
-				;;
-			*)
-				echo "$input_filename" ignored >&2
-				;;
-		esac
-	done
+	_decrypt_files "$@"
 	export secret=
 }
 
