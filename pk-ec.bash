@@ -4,7 +4,7 @@ source pk.bash
 
 # OpenSSL elliptic curves can only sign, cannot encrypt
 
-curve_name=brainpoolP256t1 # See others with openssl ecparam -list_curves
+curve_name=secp521r1 # See others with openssl ecparam -list_curves
 curve="${curve_name}.curve"
 if [[ -s "$curve" ]]
 then
