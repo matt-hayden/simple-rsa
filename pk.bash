@@ -9,8 +9,8 @@ source file.bash
 
 function gen() {
 	# make sure to implement pkgen
-	[[ "$1" ]] && private_key="$1" || private_key="$my_private_key"
-	[[ "$2" ]] && public_key="$2" || public_key="$my_public_key"
+	[[ $1 ]] && private_key="$1" || private_key="$my_private_key"
+	[[ $2 ]] && public_key="$2" || public_key="$my_public_key"
 	cert="${private_key%.*}.cert"
 	public_key="${private_key%.*}.pub"
 	secret="${private_key%.*}.secret"
@@ -43,6 +43,7 @@ function pkpasswd() {
 	else
 		private_key="$my_private_key"
 	fi
+	echo "Changing password on $private_key" >&2
 	openssl pkcs8 -in "$private_key" \
 	| openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 \
 		-out "$private_key"
@@ -86,7 +87,8 @@ function pkmksum() {
 function pkchksum() {
 	their_public_key="$1"
 	shift
-	pkverify "$their_public_key" "$@" && sha256sum -cw SHA256SUM
+	pkverify "$their_public_key" SHA256SUM.sig
+	sha256sum -cw SHA256SUM
 }
 
 function pkverify() {
@@ -111,11 +113,12 @@ function pkverify() {
 }
 
 function encrypt() {
-	# echos back filenames for, say, zip -@
+	# echos back filenames for, say, xargs
 	key_file="aes.key"
 	their_public_key="$1"
 	shift
 
+	[[ -s "$key_file" ]] && mv -b "$key_file" "${key_file}~"
 	# use a random string as a session password
 	export secret=$(openssl rand 244)
 	openssl pkeyutl -encrypt \
@@ -123,27 +126,23 @@ function encrypt() {
 		-out "$key_file" \
 		<<< "$secret"
 	echo "$key_file"
-	base64 "$key_file" | QR -o session.png
-	if [[ $# -gt 1 ]]
-	else
-		pkmksum "$key_file" "$@"
-		echo SHA256SUM.sig
-	fi
-	_encypt_files SHA256SUM "$@"
 
+	#if [[ "$key_file" -nt session.png ]]
+	#then
+	#	base64 "$key_file" | QR -o session.png
+	#fi
 	if [[ $# -eq 1 ]]
 	then
 		output_filename=$(_encrypt_files "$1")
+		echo "$output_filename"
 		sig_file="${output_filename}.sig"
-		pksign "$output_filename" > "$sig_file"
-		echo "$output_filename" "$sig_file"
+		pksign "$output_filename" > "$sig_file" && echo "$sig_file"
 	elif [[ $# -gt 1 ]]
 	then
 		output_filenames=$(_encrypt_files "$@")
-		sha256sum "$output_filenames" > SHA256SUM
-		_encrypt_files SHA256SUM
-		pksign SHA256SUM.aes > SHA256SUM.aes.sig
-		echo SHA256SUM.aes SHA256SUM.aes.sig
+		echo $output_filenames
+		sha256sum -b $output_filenames > SHA256SUM
+		pksign SHA256SUM > SHA256SUM.sig && echo SHA256SUM{,.sig}
 	else
 		echo "Bad arguments" >&2
 		exit -1
