@@ -58,8 +58,9 @@ function getQR() {
 function readQR() {
 	# make sure to implement pkimportpub
 	img="$1"
+	[[ "$2" ]] && key_file="$2" || key_file="${img%.*}.pub"
 	shift
-	ZBARIMG "$img" | pkimportpub "$@"
+	ZBARIMG "$img" | pkimportpub "$key_file"
 }
 
 function pkgetsharedsecret() {
