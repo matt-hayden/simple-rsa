@@ -20,7 +20,6 @@ function gen() {
 		-out "$private_key"
 	then
 		SHRED "${secret}"
-		echo Private key saved to "$private_key"
 	else
 		echo Failed to convert "${secret}" to PKCS8 >&2
 		exit -1
@@ -32,7 +31,7 @@ function gen() {
 		rm -f "$cert"
 		echo Public key saved to "$public_key"
 	fi
-	image_file="${public_key}.png"
+	getQR "${public_key}" "${public_key}.png"
 }
 
 function pkpasswd() {
@@ -53,17 +52,23 @@ function getQR() {
 	# make sure to implement pkexportpub
 	[[ -s "$1" ]] && key_file="$1" || key_file="$my_public_key"
 	[[ "$2" ]] && img="$2" || img="${key_file%.*}.png"
-	pkexportpub "$key_file" | QR -o "$img"
+	pkexportpub "$key_file" | QRENCODE -o "$img"
 }
 
-### shared secret derivation is not globally supported by OpenSSL
-#function pkgetsharedsecret() {
-#	# a binary shared secret is returned on stdout
-#	their_public_key="$1"
-#	shift
-#	[[ -s "$their_public_key" ]] || { echo "$their_public_key" not found; exit -3; }
-#	openssl pkeyutl -derive -inkey "$my_private_key" -peerkey "$their_public_key"
-#}
+function readQR() {
+	# make sure to implement pkimportpub
+	img="$1"
+	shift
+	ZBARIMG "$img" | pkimportpub "$@"
+}
+
+function pkgetsharedsecret() {
+	# a binary shared secret is returned on stdout
+	their_key="$1"
+	shift
+	[[ -s "$their_key" ]] || { echo "$their_key" not found; exit -3; }
+	openssl pkeyutl -derive -inkey "$my_private_key" -peerkey "$their_key"
+}
 
 function pksign() {
 	# a binary signature is returned on stdout
@@ -85,14 +90,14 @@ function pkmksum() {
 }
 
 function pkchksum() {
-	their_public_key="$1"
+	their_key="$1"
 	shift
-	pkverify "$their_public_key" SHA256SUM.sig
+	pkverify "$their_key" SHA256SUM.sig
 	sha256sum -cw SHA256SUM
 }
 
 function pkverify() {
-	their_public_key="$1"
+	their_key="$1"
 	shift
 	for input_filename
 	do
@@ -106,7 +111,7 @@ function pkverify() {
 				;;
 		esac
 		echo "${input_filename}":
-		openssl dgst -sha256 -verify "$their_public_key" \
+		openssl dgst -sha256 -verify "$their_key" \
 			-signature "$sig_file" \
 			"$input_filename"
 	done
@@ -114,22 +119,23 @@ function pkverify() {
 
 function encrypt() {
 	# echos back filenames for, say, xargs
-	key_file="aes.key"
-	their_public_key="$1"
+	#key_file="aes.key"
+	their_key="$1"
 	shift
 
-	[[ -s "$key_file" ]] && mv -b "$key_file" "${key_file}~"
-	# use a random string as a session password
-	export secret=$(openssl rand 244)
-	openssl pkeyutl -encrypt \
-		-pubin -inkey "$their_public_key" \
-		-out "$key_file" \
-		<<< "$secret"
-	echo "$key_file"
+	#[[ -s "$key_file" ]] && mv -b "$key_file" "${key_file}~"
+	### use a random string as a session password
+	#export secret=$(openssl rand 244)
+	#openssl pkeyutl -encrypt \
+	#	-pubin -inkey "$their_key" \
+	#	-out "$key_file" \
+	#	<<< "$secret"
+	#echo "$key_file"
+	export secret=$(pkgetsharedsecret "$their_key")
 
 	#if [[ "$key_file" -nt session.png ]]
 	#then
-	#	base64 "$key_file" | QR -o session.png
+	#	base64 "$key_file" | QRENCODE -o session.png
 	#fi
 	if [[ $# -eq 1 ]]
 	then
@@ -152,16 +158,19 @@ function encrypt() {
 
 
 function decrypt() {
-	for input_filename
-	do
-		case "$input_filename" in
-			*.key)
-				key_file="$input_filename"
-				echo "Using $key_file" >&2
-				export secret=$(openssl pkeyutl -decrypt -in "$input_filename" -inkey "$my_private_key")
-				;;
-		esac
-	done
+	#for input_filename
+	#do
+	#	case "$input_filename" in
+	#		*.key)
+	#			key_file="$input_filename"
+	#			echo "Using $key_file" >&2
+	#			export secret=$(openssl pkeyutl -decrypt -in "$input_filename" -inkey "$my_private_key")
+	#			;;
+	#	esac
+	#done
+	their_key="$1"
+	shift
+	export secret=$(pkgetsharedsecret "$their_key")
 	_decrypt_files "$@"
 	export secret=
 }

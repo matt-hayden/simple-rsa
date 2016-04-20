@@ -24,7 +24,7 @@ function pkgen() {
 	secret_key="$1"
 	[[ -s "$secret_key" ]] && { echo Refusing to overwrite "$secret_key"; exit -1; }
 	[[ "$2" ]] && cert="$2" || cert="${secret_key%.*}.cert"
-	openssl req -sha256 -nodes -newkey ec:"$curve" \
+	openssl req -config openssl.cnf -sha256 -nodes -newkey ec:"$curve" \
 		-keyout "${secret_key}" \
 		-out "${cert}"
 	[[ -s "$secret_key" ]] || { echo Failed to create "$secret_key"; exit -1; }
@@ -32,14 +32,13 @@ function pkgen() {
 
 function pkexportpub() {
 	[[ -s "$1" ]] && from_key="$1" || from_key="$my_public_key"
-	[[ "$2" ]] && to_key="$2" || to_key="${from_key%.*}.txt"
 	openssl ec -pubin -in "$from_key"
 }
 
 function pkimportpub() {
-	from_key="$1"
-	[[ "$2" ]] && to_key="$2" || to_key="${from_key%.*}.pem"
-	openssl ec -in "$from_key" -pubout -out "$to_key"
+	key_file="$1"
+	[[ -s "$key_file" ]] && { echo "Refusing to overwrite $key_file" >&2 ; exit -1; }
+	openssl ec -pubin -out "$key_file"
 }
 
 
@@ -60,10 +59,6 @@ case "$1" in
 			openssl ec -text -pubin -in "$my_public_key" -noout
 		fi
 		;;
-	*)
-		echo "Invalid command: $@"
-		exit -2
-		;;
 	#
 	passwd) shift
 		pkpasswd "$@"
@@ -80,6 +75,12 @@ case "$1" in
 		;;
 	chksum) shift
 		pkchksum "$@"
+		;;
+	getqr) shift
+		getQR "$@"
+		;;
+	readqr) shift
+		readQR "$@"
 		;;
 	*)
 		echo "Invalid command: $@"

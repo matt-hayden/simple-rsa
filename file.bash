@@ -20,11 +20,20 @@ fi
 
 if command -v qrencode &> /dev/null
 then
-	function QR() {
-		qrencode -c -lH "$@" || echo "No QR code produced" >&2 ;
+	function QRENCODE() {
+		qrencode -c -lH "$@" || echo "No QR code produced" >&2
 	}
 else
-	function QR() { true; }
+	function QRENCODE() { true; }
+fi
+
+if command -v zbarimg &> /dev/null
+then
+	function ZBARIMG() {
+		zbarimg --raw -q "$@"
+	}
+else
+	function ZBARIMG() { true; }
 fi
 
 function _encrypt_in() {
@@ -82,7 +91,7 @@ function _encrypt_files() {
 				output_filename="${input_filename}.aes"
 				function CAT() { pv "$@"; }
 				;;
-			*.bfe|*.gpg|*.pgp)
+			*.bfe|*.gpg|*.nc|*.pgp)
 				output_filename="${input_filename}.aes"
 				function CAT() { pv "$@"; }
 				;;
