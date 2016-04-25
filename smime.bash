@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-my_private_key=.smime.key
-my_public_key=cert.pem
+my_private_key=".pki/smime.key"
+my_public_key=".pki/smime_cert.pem"
 
 [[ -s "$my_private_key" ]] || echo Running without private key
 

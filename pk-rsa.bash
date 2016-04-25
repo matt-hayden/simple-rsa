@@ -2,8 +2,8 @@
 set -e
 source pk.bash
 
-my_private_key=.secret_rsa.key
-my_public_key=public.pem
+my_private_key=".pki/secret_rsa.key"
+my_public_key=".pki/public_rsa.pem"
 
 [[ -s "$my_private_key" ]] || echo Running without private key
 

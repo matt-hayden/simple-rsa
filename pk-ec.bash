@@ -5,7 +5,7 @@ source pk.bash
 # OpenSSL elliptic curves can only sign, cannot encrypt
 
 curve_name=secp521r1 # See others with openssl ecparam -list_curves
-curve="${curve_name}.curve"
+curve=".pki/${curve_name}.curve"
 if [[ -s "$curve" ]]
 then
 	openssl ecparam -in "$curve" -check -noout || exit -1
@@ -14,8 +14,8 @@ else
 		-out "$curve" \
 	&& echo "$curve" can be used with previous versions
 fi
-my_private_key=.secret_${curve_name}.key
-my_public_key=public.pem
+my_private_key=".pki/secret_${curve_name}.key"
+my_public_key=".pki/public_${curve_name}.pem"
 
 [[ -s "$my_private_key" ]] || echo Running without private key
 
