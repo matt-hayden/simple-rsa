@@ -1,34 +1,67 @@
 #!/usr/bin/env bash
 set -e
+source file.bash
 
-my_private_key=".pki/smime.key"
+[[ -d .pki ]] || mkdir .pki
+my_private_key=".pki/smime_secret.key"
 my_public_key=".pki/smime_cert.pem"
 
 [[ -s "$my_private_key" ]] || echo Running without private key
 
 
 function smime_gen() {
-	[[ "$1" ]] && private_key="$1" || private_key="$my_private_key"
-	shift
-	[[ -s "$private_key" ]] && { echo Refusing to overwrite "$private_key"; exit -2; }
-	openssl req -newkey rsa:2048 -nodes -sha256 -days 365 \
-		-keyout "$my_private_key" \
-		-out "$my_public_key" -x509
+	if [[ "$1" ]]
+	then
+		private_key="$1"
+		shift
+	else
+ 		private_key="$my_private_key"
+	fi
+	[[ -s "$private_key" ]] && { echo Refusing to overwrite "$private_key" >&2 ; exit -2; }
+	secret="${private_key%.*}.secret"
+	openssl req -newkey rsa:2048 -nodes -sha256 -days 3652 \
+		-keyout "$secret" \
+		-out "$my_public_key" -x509 \
+		-config openssl.cnf
+	###
 	#echo Signing certificate:
 	#openssl x509 -req -signkey "$my_private_key" \
-		#-in tmp.pem \
-		#-out "$my_public_key" \
+	#	-in tmp.pem \
+	#	-out "$my_public_key" \
 	#&& rm tmp.pem
+	###
+	if openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 \
+		-in "${secret}" \
+		-out "$private_key"
+	then
+		SHRED "${secret}"
+	else
+		echo Failed to convert "${secret}" to PKCS8 >&2
+		exit -1
+	fi
 }
 
-function smime_getpub() {
-	[[ -s "$1" ]] && private_key="$1" || private_key="$my_private_key"
-	[[ -s "$private_key" ]] || { echo Cannot find "$private_key"; exit -2; }
-	[[ -s "$my_public_key" ]] && mv -f "$my_public_key" "$my_public_key"~
-	echo Generating new public key in "$my_public_key"
-	openssl rsa -pubout \
-		-in "$private_key" \
-		-out "$my_public_key" -pubout
+function smime_export() {
+	if [[ -s "$1" ]]
+	then
+		cert="$1"
+		shift
+	else
+		cert="${my_private_key%.*}.pkcs12"
+	fi
+	[[ -s "$my_private_key" ]] || { echo Cannot find "$my_private_key" >&2 ; exit -2; }
+	###
+	#[[ -s "$my_public_key" ]] && mv -f "$my_public_key" "$my_public_key"~
+	#echo Generating new public key in "$my_public_key" >&2
+	#openssl rsa -pubout \
+	#	-in "$private_key" \
+	#	-out "$my_public_key"
+	###
+	echo You must re-enter passwords for format conversion >&2
+	openssl pkcs12 -export -name "Generated $(date +%Y%m%d-%H%M%S)" -nodes -aes256 \
+		-in "$my_public_key" \
+		-inkey "$my_private_key" \
+		-out "$cert"
 }
 
 function smime_sign() {
@@ -36,7 +69,7 @@ function smime_sign() {
 	for input_filename
 	do
 		output_filename="${input_filename}.smime"
-		openssl smime -sign -text \
+		openssl smime -sign -text -md sha256 \
 			-signer "$my_public_key" \
 			-inkey  "$my_private_key" \
 			-in "$input_filename" \
@@ -124,8 +157,13 @@ case "$1" in
 			output_filename="${input_filename}.cert"
 			smime_extract "$input_filename" "$output_filename"
 		done
+		;;
 	gen|generate) shift
 		smime_gen "$@"
+		smime_export
+		;;
+	foo) shift
+		smime_export
 		;;
 	sig|sign) shift
 		smime_sign "$@"

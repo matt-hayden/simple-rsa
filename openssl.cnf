@@ -1,0 +1,20 @@
+####################################################################
+[ req ]
+default_bits		= 2048
+default_md		= sha256
+distinguished_name	= req_distinguished_name
+
+[ req_distinguished_name ]
+
+# title under Thunderbird certificate organizer
+0.organizationName		= Organization Name (eg, company)
+0.organizationName_default	= OpenSSL
+
+#organizationalUnitName		= Organizational Unit Name (eg, section)
+#organizationalUnitName_default	=
+
+commonName			= Your name
+commonName_max			= 64
+
+emailAddress			= email address
+emailAddress_max		= 64
