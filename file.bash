@@ -3,6 +3,7 @@
 
 set -e
 
+cipher='-aes-128-ctr'
 
 if command -v shred &> /dev/null
 then
@@ -59,7 +60,7 @@ function _encrypt_in() {
 		*)
 			pv
 			;;
-	esac | openssl enc -aes256 -salt -pass env:secret \
+	esac | openssl enc $cipher -salt -pass env:secret \
 		-out "$output_filename"
 	if [[ -s "$output_filename" ]]
 	then
@@ -100,7 +101,7 @@ function _encrypt_files() {
 				function CAT() { pv "$@" | xz -C sha256 -c ; }
 				;;
 		esac
-		CAT "$input_filename" | openssl enc -aes256 -salt -pass env:secret \
+		CAT "$input_filename" | openssl enc $cipher -salt -pass env:secret \
 			-out "$output_filename"
 		if [[ -s "$output_filename" ]]
 		then
@@ -119,11 +120,11 @@ function encrypt() {
 	echo "Using $key_file" >&2
 	if [[ -s "$key_file" ]]
 	then
-		secret=$(openssl enc -d -aes256 -in "$key_file")
+		secret=$(openssl enc -d $cipher -in "$key_file")
 	else
 		# use a random string as a session key.
 		secret=$(openssl rand 244)
-		openssl enc -aes256 -salt -out $key_file <<< "$secret"
+		openssl enc $cipher -salt -out $key_file <<< "$secret"
 	fi
 	echo "$key_file"
 	export secret
@@ -135,7 +136,7 @@ function _decrypt_out() {
 	[[ "$secret" ]] || { echo "Obtaining key failed"; exit -9; }
 	for input_filename
 	do
-		openssl enc -d -aes256 -pass env:secret \
+		openssl enc -d $cipher -pass env:secret \
 			-in "${input_filename}" \
 		| case "$input_filename" in
 			*.gz.*)
@@ -158,7 +159,7 @@ function _decrypt_files() {
 		case "$input_filename" in
 			*.aes)
 				output_filename="${input_filename%.aes}"
-				openssl enc -d -aes256 -pass env:secret \
+				openssl enc -d $cipher -pass env:secret \
 					-in "${input_filename}" \
 					-out "$output_filename"
 				if [[ -s "$output_filename" ]]
@@ -192,7 +193,7 @@ function decrypt() {
 			*.key)
 				key_file="$input_filename"
 				echo "Using $key_file" >&2
-				export secret=$(openssl enc -d -aes256 -in "$key_file")
+				export secret=$(openssl enc -d $cipher -in "$key_file")
 				;;
 		esac
 	done

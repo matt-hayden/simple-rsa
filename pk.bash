@@ -6,6 +6,8 @@
 set -e
 source file.bash
 
+cipher=AES128-GCM-SHA256
+openssl_pkcs8_options="-v2 $cipher -v2prf hmacWithSHA256"
 
 function gen() {
 	# make sure to implement pkgen
@@ -15,7 +17,7 @@ function gen() {
 	public_key="${private_key%.*}.pub"
 	secret="${private_key%.*}.secret"
 	pkgen "${secret}" "$cert"
-	if openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 \
+	if openssl pkcs8 -topk8 $openssl_pkcs8_options \
 		-in "${secret}" \
 		-out "$private_key"
 	then
@@ -44,7 +46,7 @@ function pkpasswd() {
 	fi
 	echo "Changing password on $private_key" >&2
 	openssl pkcs8 -in "$private_key" \
-	| openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 \
+	| openssl pkcs8 -topk8 $openssl_pkcs8_options \
 		-out "$private_key"
 }
 

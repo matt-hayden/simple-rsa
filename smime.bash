@@ -2,6 +2,9 @@
 set -e
 source file.bash
 
+smime_cipher='-aes128'
+openssl_pkcs8_options="-v2 aes-128-ctr -v2prf hmacWithSHA256"
+
 [[ -d .pki ]] || mkdir .pki
 my_private_key=".pki/smime_secret.key"
 my_public_key=".pki/smime_cert.pem"
@@ -30,7 +33,7 @@ function smime_gen() {
 	#	-out "$my_public_key" \
 	#&& rm tmp.pem
 	###
-	if openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 \
+	if openssl pkcs8 -topk8 $openssl_pkcs8_options \
 		-in "${secret}" \
 		-out "$private_key"
 	then
@@ -58,7 +61,7 @@ function smime_export() {
 	#	-out "$my_public_key"
 	###
 	echo You must re-enter passwords for format conversion >&2
-	openssl pkcs12 -export -name "Generated $(date +%Y%m%d-%H%M%S)" -nodes -aes256 \
+	openssl pkcs12 -export -name "Generated $(date +%Y%m%d-%H%M%S)" -nodes $smime_cipher \
 		-in "$my_public_key" \
 		-inkey "$my_private_key" \
 		-out "$cert"
@@ -121,7 +124,7 @@ function smime_encrypt() {
 	for input_filename
 	do
 		output_filename="${input_filename}.smime"
-		openssl smime -encrypt -aes256 \
+		openssl smime -encrypt $smime_cipher \
 			-in "$input_filename" \
 			-binary -out "$output_filename" \
 			"$their_cert"
