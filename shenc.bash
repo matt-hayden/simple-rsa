@@ -1,5 +1,5 @@
 #! /usr/bin/env bash
-options='-bf-cbc -salt -md sha256'
+options='-blowfish -salt -md sha256'
 
 cat << EOP
 #! /bin/sh
