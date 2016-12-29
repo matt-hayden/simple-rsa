@@ -3,24 +3,24 @@
 Remember that OpenSSL is a library, and the library has features not exposed to the command line.
 
 ## Testing
-    ```Shell
+    ```sh
     cipher=aes-128-ctr
     cipher=aes-128-gcm # your implementation may not support this mode
     ```
 
 ### Baseline:
-    ```Shell
+    ```sh
     openssl speed -elapsed -evp $cipher
     ```
 
 ### Intel AES-NI instructions disabled:
-    ```Shell
+    ```sh
     OPENSSL_ia32cap="~0x200000200000000" openssl speed -elapsed -evp $cipher
     ```
 
 ## Symmetric encryption and decryption
 ### AES with ASCII armor
-    ```Shell
+    ```sh
     enc_cipher='-aes-128-ctr -md SHA256'
     enc_cipher='-blowfish -md SHA256' # alternatively
     openssl enc -e $enc_cipher -in plaintext -a
@@ -44,7 +44,7 @@ From an existing (trusted) certificate:
 ### PKCS8 key wrapping
 (password must be 4-1023 characters)
 
-    ```Shell
+    ```sh
     openssl_pkcs8_options='-v2 aes128 -v2prf hmacWithSHA256'
     openssl pkcs8 -topk8 $openssl_pkcs8_options -in private/key
     ```
@@ -53,7 +53,7 @@ From an existing (trusted) certificate:
     openssl pkcs8 -in private/key
 
 ## Public key cryptosystems
-    ```Shell
+    ```sh
     openssl_req_options='-config openssl.cnf -sha256 -nodes'
     echo $openssl_pkcs8_options
     openssl_signing_options='-pkeyopt digest:SHA256'
@@ -67,25 +67,25 @@ This appears to work for RSA, but not EC
 Remember to protect shared_secret. Exporting a variable with binary contents, like the output of this command, may fail.
 
 ### File signing
-    ```Shell
+    ```sh
     openssl dgst -sha256 -sign your/private/key file
     openssl pkeyutl -sign $openssl_signing_options -in file -inkey your/private/key
     ```
 ### Signature verification
-    ```Shell
+    ```sh
     openssl dgst -sha256 -verify their/public/key -signature file.sig file
     openssl pkeyutl -verify -pubin $openssl_signing_options -in file -sigfile file.sig -inkey their/public/key
     ```
 
 ### RSA
 #### Key generation
-    ```Shell
+    ```sh
     openssl req -x509 $openssl_req_options -newkey rsa:4096 -out certificate.pem | ...
     ```
 
 Wrap this using PKCS8 for local use.
 
-    ```Shell
+    ```sh
     openssl rsa -RSAPublicKey_out -pubout -in private/key > public_key
     ```
 
@@ -93,7 +93,7 @@ Wrap this using PKCS8 for local use.
     openssl rsa -text -in private/key
 
 ### Elliptic Curves
-    ```Shell
+    ```sh
     openssl_curve_name=secp521r1
     ```
 #### list curves
@@ -102,7 +102,7 @@ Wrap this using PKCS8 for local use.
 
 (this might be useful for earlier versions of OpenSSL than yours)
 
-    ```Shell
+    ```sh
     openssl ecparam -name $openssl_curve_name -param_enc explicit
     ```
 
@@ -115,14 +115,14 @@ Wrap this using PKCS8 for local use.
 Expects a file called $openssl_curve_name with elliptic curve parameters (see above).
 
 
-    ```Shell
+    ```sh
     openssl req -x509 $openssl_req_options -newkey ec:$openssl_curve_name -out certificate.pem | ...
     ```
 
 Wrap this using PKCS8 for local use.
 
 
-    ```Shell
+    ```sh
     openssl ec -pubout -in private/key > public_key
     ```
 
@@ -130,20 +130,20 @@ Wrap this using PKCS8 for local use.
 
 Edit an openssl-service.cnf for your server into ``$SERVICE.cnf``.
 
-    ```Shell
+    ```sh
     openssl_req_options='-config $SERVICE.cnf -nodes -days 365'
     ```
 
 Self-signed:
 
-    ```Shell
+    ```sh
     openssl req -new -x509 $openssl_req_options -out certificate.pem -keyout private/$SERVICE.key
     openssl x509 -fingerprint -sha256 -noout -in certificate.pem
     ```
 
 ## Certificate Authority
 
-    ```Shell
+    ```sh
     openssl_ca_options='-config CA/openssl.cnf -selfsign -extensions v3_ca_has_san -create_serial -days 365'
     openssl_req_options='-config CA/openssl.cnf -utf8 -extensions v3_ca -days 365'
     openssl_key_name='Your name here'
@@ -151,34 +151,34 @@ Self-signed:
 
 #### CA key generation
 
-    ```Shell
+    ```sh
     mkdir CA/{certsdb,certreqs,crl,newcerts,private}
     touch -a CA/index.txt
     ```
 
 Be careful and use a different Common Name and Subject for each key.
 
-    ```Shell
+    ```sh
     openssl req -x509 $openssl_req_options -newkey rsa:4096 -keyout CA/private/cakey.pem -out CA/careq.pem
     openssl ca $openssl_ca_options -keyfile CA/private/cakey.pem -infiles CA/careq.pem -out CA/cacert.pem
     ```
 
 #### Client
 
-    ```Shell
+    ```sh
     openssl_key_name='Your name here'
     openssl req -new -key private/client_key -out client.csr
     ```
 
 ##### Signing
 
-    ```Shell
+    ```sh
     openssl_x509_options='-config client.cnf -utf8 -days 365 -CA CA/cacert.pem -CAkey CA/private/cakey.pem'
     ```
 
 This is handled by the CA:
 
-    ```Shell
+    ```sh
     openssl x509 -req $openssl_x509_options -in client.csr -out client_certificate.pem
     ```
 
@@ -187,7 +187,7 @@ client.csr is disposable
 This is handled by the client:
 
 
-    ```Shell
+    ```sh
     openssl pkcs12 -name "$openssl_key_name" -export -in client_certificate.pem -inkey private/client_key -out client.p12
     ```
 
@@ -195,13 +195,13 @@ private/client_key is disposable
 
 ## S/MIME
 
-    ```Shell
+    ```sh
     openssl_req_options='-config smime.cnf -utf8 -days 365 -nodes -sha256'
     ```
 
 #### Key generation
 
-    ```Shell
+    ```sh
     openssl req -x509 $openssl_req_options -newkey rsa:4096 -keyout smime_private/key -out certificate.pem
     openssl pkcs12 -export -aes128 -name "Application displays this" -in certificate.pem -inkey smime_private/key -out smime.p12
     ```
@@ -214,7 +214,7 @@ private/client_key is disposable
 
 Test a server's signed certificate:
 
-    ```Shell
+    ```sh
     CAfile=/usr/share/ca-certificates/mozilla/DigiCert_Assured_ID_Root_CA.crt
     openssl s_client -connect localhost:443 -CAfile $CAfile < /dev/null | openssl x509 -noout -fingerprint -sha256
 ### IMAP and POP3
@@ -230,13 +230,13 @@ Test a server's signed certificate:
 #### download and extract public key
 With the certificate google-cloud-csek-ingress.pem
 
-    ```Shell
+    ```sh
     openssl x509 -pubkey -noout -in google-cloud-csek-ingress.pem > pubkey.pem
     ```
 
 #### generate 256-bit key and wrap with PKCS#1 OAEP
 
-    ```Shell
+    ```sh
     openssl rand 32 > private_key
     openssl rsautl -oaep -encrypt -in private_key -pubin -inkey pubkey.pem | openssl base64 -e
     ```
@@ -249,13 +249,13 @@ With the certificate google-cloud-csek-ingress.pem
 
 #### generate 256-bit key and wrap with PKCS#1
 
-    ```Shell
+    ```sh
     openssl rand 32 | openssl rsautl -encrypt -pubin -inkey privkey.pem -out crypt.key
     ```
 
 #### unwrap key
 
-    ```Shell
+    ```sh
     openssl rsautl -decrypt -in crypt.key -inkey privkey.pem | hexdump -e '"" 32/1 "%02x" "\n"'
     ```
 
@@ -263,7 +263,7 @@ With the certificate google-cloud-csek-ingress.pem
 
 Push the old key through ``openssl rsa``.
 
-    ```Shell
+    ```sh
     mv privkey.pem{,~}
     openssl rsa -in privkey.pem~ -out privkey.pem
     # enter old and new passwords
@@ -274,7 +274,7 @@ Push the old key through ``openssl rsa``.
 
 Repeat for each volume key (``crypt.key`` here).
 
-    ```Shell
+    ```sh
     mv privkey.pem{,~}
     openssl genrsa -aes256 -out privkey.pem 2048
     # enter new password
