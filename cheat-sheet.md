@@ -161,4 +161,14 @@ Test a server's signed certificate:
 ### SMTPS
     openssl s_client -starttls smtp -crlf -connect localhost:25
 
+## Google Cloud keys
 
+#### download and extract public key
+With the certificate google-cloud-csek-ingress.pem
+
+    openssl x509 -pubkey -noout -in google-cloud-csek-ingress.pem > pubkey.pem
+
+#### generate 256-bit key and wrap with PKCS#1 OAEP
+
+    openssl rand 32 > private_key
+    openssl rsautl -oaep -encrypt -in private_key -pubin -inkey pubkey.pem -out rsa | openssl base64 -e
