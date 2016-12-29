@@ -90,60 +90,97 @@ Wrap this using PKCS8 for local use.
 
 Expects a file called $openssl_curve_name with elliptic curve parameters (see above).
 
+
+    ```shell
     openssl req -x509 $openssl_req_options -newkey ec:$openssl_curve_name -out certificate.pem | ...
+    ```
 
 Wrap this using PKCS8 for local use.
 
+
+    ```shell
     openssl ec -pubout -in private/key > public_key
+    ```
 
 ## Service Certificates
 
-Edit an openssl-service.cnf for your server.
+Edit an openssl-service.cnf for your server into ``$SERVICE.cnf``.
 
-    openssl_req_options='-config openssl-service.cnf -nodes -days 365'
+    ```shell
+    openssl_req_options='-config $SERVICE.cnf -nodes -days 365'
+    ```
 
 Self-signed:
 
-    openssl req -new -x509 $openssl_req_options -out certificate.pem -keyout private/$KEYFILE
+    ```shell
+    openssl req -new -x509 $openssl_req_options -out certificate.pem -keyout private/$SERVICE.key
     openssl x509 -fingerprint -sha256 -noout -in certificate.pem
+    ```
 
 ## Certificate Authority
+
+    ```shell
     openssl_ca_options='-config CA/openssl.cnf -selfsign -extensions v3_ca_has_san -create_serial -days 365'
     openssl_req_options='-config CA/openssl.cnf -utf8 -extensions v3_ca -days 365'
     openssl_key_name='Your name here'
+    ```
+
 #### CA key generation
 
+    ```shell
     mkdir CA/{certsdb,certreqs,crl,newcerts,private}
-    touch CA/index.txt
+    touch -a CA/index.txt
+    ```
 
 Be careful and use a different Common Name and Subject for each key.
 
+    ```shell
     openssl req -x509 $openssl_req_options -newkey rsa:4096 -keyout CA/private/cakey.pem -out CA/careq.pem
     openssl ca $openssl_ca_options -keyfile CA/private/cakey.pem -infiles CA/careq.pem -out CA/cacert.pem
+    ```
 
 #### Client
+
+    ```shell
     openssl_key_name='Your name here'
     openssl req -new -key private/client_key -out client.csr
+    ```
+
 ##### Signing
+
+    ```shell
     openssl_x509_options='-config client.cnf -utf8 -days 365 -CA CA/cacert.pem -CAkey CA/private/cakey.pem'
+    ```
 
 This is handled by the CA:
 
+    ```shell
     openssl x509 -req $openssl_x509_options -in client.csr -out client_certificate.pem
+    ```
 
 client.csr is disposable
 
 This is handled by the client:
 
+
+    ```shell
     openssl pkcs12 -name "$openssl_key_name" -export -in client_certificate.pem -inkey private/client_key -out client.p12
+    ```
 
 private/client_key is disposable
 
 ## S/MIME
+
+    ```shell
     openssl_req_options='-config smime.cnf -utf8 -days 365 -nodes -sha256'
+    ```
+
 #### Key generation
+
+    ```shell
     openssl req -x509 $openssl_req_options -newkey rsa:4096 -keyout smime_private/key -out certificate.pem
     openssl pkcs12 -export -aes128 -name "Application displays this" -in certificate.pem -inkey smime_private/key -out smime.p12
+    ```
 
 #### Signing
     openssl smime -sign -text -signer certificate.pem -inkey smime_private/key
@@ -153,12 +190,15 @@ private/client_key is disposable
 
 Test a server's signed certificate:
 
+    ```shell
     CAfile=/usr/share/ca-certificates/mozilla/DigiCert_Assured_ID_Root_CA.crt
     openssl s_client -connect localhost:443 -CAfile $CAfile < /dev/null | openssl x509 -noout -fingerprint -sha256
 ### IMAP and POP3
     openssl s_client -crlf -connect localhost:110
+    ```
 
 ### SMTPS
+
     openssl s_client -starttls smtp -crlf -connect localhost:25
 
 ## Google Cloud keys
@@ -166,31 +206,56 @@ Test a server's signed certificate:
 #### download and extract public key
 With the certificate google-cloud-csek-ingress.pem
 
-    ```sh
+    ```shell
     openssl x509 -pubkey -noout -in google-cloud-csek-ingress.pem > pubkey.pem
     ```
 
 #### generate 256-bit key and wrap with PKCS#1 OAEP
 
-    ```sh
+    ```shell
     openssl rand 32 > private_key
     openssl rsautl -oaep -encrypt -in private_key -pubin -inkey pubkey.pem | openssl base64 -e
     ```
 
 ## Linux cryptsetup keys
 
-### Master key
+### master key
 
     openssl genrsa -aes256 -out privkey.pem 2048
 
 #### generate 256-bit key and wrap with PKCS#1
 
-    ```sh
+    ```shell
     openssl rand 32 | openssl rsautl -encrypt -pubin -inkey privkey.pem -out crypt.key
     ```
 
 #### unwrap key
 
-    ```sh
+    ```shell
     openssl rsautl -decrypt -in crypt.key -inkey privkey.pem | hexdump -e '"" 32/1 "%02x" "\n"'
+    ```
+
+#### change password
+
+Push the old key through ``openssl rsa``.
+
+    ```shell
+    mv privkey.pem{,~}
+    openssl rsa -in privkey.pem~ -out privkey.pem
+    # enter old and new passwords
+    shred privkey.pem~
+    ```
+
+#### change master key
+
+Repeat for each volume key (``crypt.key`` here).
+
+    ```shell
+    mv privkey.pem{,~}
+    openssl genrsa -aes256 -out privkey.pem 2048
+    # enter new password
+    mv crypt.key{,~}
+    openssl rsautl -decrypt -in crypt.key~ -inkey privkey.pem~ | openssl rsautl -encrypt -out crypt.key
+    # enter old and new passwords
+    shred privkey.pem~ crypt.key~
     ```
