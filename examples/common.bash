@@ -5,17 +5,20 @@
 
 TMPDIR=$(mktemp -d)
 : ${key=key.rsa}
-pipe=$(mktemp).pipe
+pipe=$(mktemp)
 session_key=$(mktemp)
 
 function atexit {
   shred "$session_key"
+  [[ -p "$pipe" ]] || shred "$pipe"
   rm -rf "$TMPDIR"
 }
 trap atexit EXIT
 
 if [[ $mode == stdin ]]
 then
-  mkfifo "$pipe"
-  pv > "$pipe" & # consume stdin
+  ### couldn't get these to work:
+  #mkfifo "$pipe"
+  #cat > "$pipe" & # consume stdin
+  pv -b > "$pipe"
 fi
